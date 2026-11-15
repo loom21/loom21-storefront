@@ -8,6 +8,7 @@ import { StorefrontApi } from '../../core/api/storefront-api';
 import type { CheckoutRequest, PaymentMethodName, Quote } from '../../core/api/types';
 import { CartStore } from '../../core/cart/cart.store';
 import { CheckoutStore } from '../../core/checkout/checkout.store';
+import { webUrl } from '../../core/format';
 import { I18n, TPipe } from '../../core/i18n/i18n.service';
 import { SeoService } from '../../core/seo/seo.service';
 import { StoreConfig } from '../../core/store/store-config';
@@ -166,6 +167,7 @@ export class CheckoutPage {
     const method = v.method as PaymentMethodName;
     // Opened inside the click, before any await: a popup opened later is blocked.
     const popup = method === 'card' ? window.open('about:blank', '_blank') : null;
+    if (popup) popup.opener = null;
 
     const request: CheckoutRequest = {
       items: this.cart.items(),
@@ -191,10 +193,18 @@ export class CheckoutPage {
     this.busy.set(true);
     try {
       await this.checkoutStore.start(request);
-      const payment = await this.checkoutStore.pay(method);
-      if (popup && payment.hostedPaymentUrl) popup.location.href = payment.hostedPaymentUrl;
+      // The order exists from here on. When its payment can't be opened, the pay page says why and offers the methods
+      // again: staying here would make a second order, and hold the stock twice, on the next try.
+      let payError: string | null = null;
+      let url: string | null = null;
+      try {
+        url = webUrl((await this.checkoutStore.pay(method)).hostedPaymentUrl);
+      } catch (e) {
+        payError = this.i18n.error(e);
+      }
+      if (popup && url) popup.location.href = url;
       else popup?.close();
-      await this.router.navigate(['/checkout/pay'], { state: { popupBlocked: method === 'card' && !popup } });
+      await this.router.navigate(['/checkout/pay'], { state: { popupBlocked: method === 'card' && !popup && !payError, payError } });
     } catch (e) {
       popup?.close();
       const error = ApiError.from(e);

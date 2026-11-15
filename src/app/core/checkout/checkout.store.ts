@@ -1,6 +1,7 @@
 import { DestroyRef, Injectable, PLATFORM_ID, inject, signal } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
+import { ApiError } from '../api/api-error';
 import { StorefrontApi } from '../api/storefront-api';
 import type { Checkout, CheckoutRequest, CheckoutStatus, Payment, PaymentMethodName } from '../api/types';
 import { newIdempotencyKey } from '../format';
@@ -55,9 +56,13 @@ export class CheckoutStore {
     inject(DestroyRef).onDestroy(() => this.stopPolling());
   }
 
-  /** Holds the stock and creates the order. Retrying the same request reuses its Idempotency-Key. */
+  /**
+   * Holds the stock and creates the order. Retrying the same request reuses its Idempotency-Key. A checkout still open
+   * from before (the buyer went back and changed something) is cancelled first, so its stock isn't held twice.
+   */
   async start(request: CheckoutRequest): Promise<SavedCheckout> {
     const body = JSON.stringify(request);
+    if (this.checkout()) await this.cancel().catch(() => {});
     if (this.attempt?.body !== body) this.attempt = { key: newIdempotencyKey(), body };
     const created: Checkout = await firstValueFrom(this.api.createCheckout(request, this.attempt.key));
     this.attempt = null;
@@ -78,7 +83,8 @@ export class CheckoutStore {
     if (!current) throw new Error('No checkout');
     const payment = await firstValueFrom(this.api.pay(current.token, method));
     // A payment that lasts longer extends the reservation.
-    const expiresAt = payment.expiresAt && payment.expiresAt > current.expiresAt ? payment.expiresAt : current.expiresAt;
+    const expiresAt =
+      payment.expiresAt && Date.parse(payment.expiresAt) > Date.parse(current.expiresAt) ? payment.expiresAt : current.expiresAt;
     this.save({ ...current, payment, expiresAt });
     return payment;
   }
@@ -121,6 +127,7 @@ export class CheckoutStore {
   private async tick(): Promise<void> {
     const current = this.checkout();
     if (!this.polling || !current) return;
+    let wait = POLL_MS;
     try {
       const poll = await firstValueFrom(this.api.status(current.token, this.etag));
       if (!this.polling) return;
@@ -135,11 +142,21 @@ export class CheckoutStore {
           return;
         }
       }
-    } catch {
-      // A failed poll is skipped; the next one tries again.
+    } catch (e) {
+      if (!this.polling) return;
+      const error = ApiError.from(e);
+      // The API no longer knows this checkout: it is over, and polling it again would never end.
+      if (error.code === 'not_found') {
+        this.stopPolling();
+        this.forget();
+        this.onEnd({ status: 'expired' } as CheckoutStatus);
+        return;
+      }
+      // Any other failed poll is skipped and the next one tries again, after a 429's Retry-After (a minute at most).
+      wait = Math.max(POLL_MS, Math.min(error.retryAfter ?? 0, 60) * 1000);
     }
     clearTimeout(this.timer);
-    if (this.polling && !document.hidden) this.timer = setTimeout(() => void this.tick(), POLL_MS);
+    if (this.polling && !document.hidden) this.timer = setTimeout(() => void this.tick(), wait);
   }
 
   /** The order the confirmation page shows, once. */

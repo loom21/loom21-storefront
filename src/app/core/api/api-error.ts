@@ -15,6 +15,8 @@ export class ApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly problem: Problem | null,
+    /** Seconds to wait before trying again (a 429's Retry-After). */
+    readonly retryAfter: number | null = null,
   ) {
     super(problem?.detail ?? code);
     this.name = 'ApiError';
@@ -25,7 +27,8 @@ export class ApiError extends Error {
     if (error instanceof HttpErrorResponse) {
       if (error.status === 0) return new ApiError(0, 'network', null);
       const problem = typeof error.error === 'object' && error.error ? (error.error as Problem) : null;
-      return new ApiError(error.status, problem?.code ?? (error.status === 404 ? 'not_found' : 'unknown'), problem);
+      const code = problem?.code ?? (error.status === 404 ? 'not_found' : error.status === 429 ? 'rate_limited' : 'unknown');
+      return new ApiError(error.status, code, problem, Number(error.headers?.get('Retry-After')) || null);
     }
     return new ApiError(0, 'unknown', null);
   }

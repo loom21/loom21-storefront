@@ -233,4 +233,55 @@ test.describe('cart and checkout', () => {
     await page.getByTestId('cancel-yes').click();
     await expect(page.getByTestId('pay-ended')).toContainText('Order cancelled');
   });
+
+  async function toPayment(page: Page): Promise<void> {
+    await addToCart(page, 'raw-honey');
+    await page.goto('/checkout');
+    await page.getByTestId('email').fill('maria@example.com');
+    await page.getByTestId('shipping-1').check();
+    await page.getByTestId('method-lightning').check();
+    await page.getByTestId('pay').click();
+    await expect(page).toHaveURL(/\/checkout\/pay$/);
+  }
+  const posts = async (request: APIRequestContext, path: RegExp) =>
+    (await log(request)).filter(c => c.method === 'POST' && path.test(c.path)).length;
+
+  test('a Lightning invoice that runs out before its checkout: choose how to pay again', async ({ page, request }) => {
+    await mock(request, '/__test/config', { paymentSeconds: 2 });
+    await toPayment(page);
+    await expect(page.getByTestId('lightning')).toBeVisible();
+    await expect(page.getByTestId('pay-lightning')).toBeVisible(); // the invoice ran out, the order didn't
+    await expect(page.getByTestId('lightning')).toHaveCount(0);
+
+    await mock(request, '/__test/config', { paymentSeconds: 600 });
+    await page.getByTestId('pay-lightning').click();
+    await expect(page.getByTestId('lightning')).toBeVisible();
+    expect(await posts(request, /^\/checkouts$/)).toBe(1); // the same order, a new invoice
+  });
+
+  test("a payment that can't be opened: the pay page says so, and trying again makes no second order", async ({ page, request }) => {
+    await mock(request, '/__test/config', { failPayments: 1 });
+    await toPayment(page);
+    await expect(page.getByRole('alert')).toBeVisible();
+    await page.getByTestId('pay-lightning').click();
+    await expect(page.getByTestId('lightning')).toBeVisible();
+    expect(await posts(request, /^\/checkouts$/)).toBe(1);
+  });
+
+  test('going back and paying again cancels the first order', async ({ page, request }) => {
+    await toPayment(page);
+    await page.goto('/checkout');
+    await page.getByTestId('email').fill('maria@example.com');
+    await page.getByTestId('shipping-1').check();
+    await page.getByTestId('pay').click();
+    await expect(page.getByTestId('lightning')).toBeVisible();
+    expect(await posts(request, /^\/checkouts$/)).toBe(2);
+    expect(await posts(request, /\/cancel$/)).toBe(1);
+  });
+
+  test('a checkout the API no longer knows ends the wait', async ({ page, request }) => {
+    await toPayment(page);
+    await mock(request, '/__test/forget');
+    await expect(page.getByTestId('pay-ended')).toBeVisible({ timeout: 10_000 });
+  });
 });

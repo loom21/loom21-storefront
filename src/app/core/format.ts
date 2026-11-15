@@ -50,6 +50,16 @@ export function formatCountdown(ms: number): string {
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
+/** An address from the API to open or link to: http(s) only (never javascript: or data:), else null. */
+export function webUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  try {
+    return /^https?:$/.test(new URL(url, 'https://relative.invalid').protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A UUID for Idempotency-Key; crypto.randomUUID is missing on plain-http pages. */
 export function newIdempotencyKey(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();

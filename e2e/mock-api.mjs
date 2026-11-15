@@ -4,8 +4,11 @@
 // Test controls (not part of the real API):
 //   GET  /__test/log       every API request seen, with the headers that matter
 //   POST /__test/reset     forget requests, checkouts and overrides
-//   POST /__test/config    { storeDisabled, checkoutAvailable, language, bitcoinOnly, hidePrices, stock: { [id]: n } }
+//   POST /__test/config    { storeDisabled, checkoutAvailable, language, bitcoinOnly, hidePrices, stock: { [id]: n },
+//                            paymentSeconds (how long a payment lives, 600 when not set),
+//                            failPayments (that many POST …/payments answer 502 payment_provider_error) }
 //   POST /__test/pay       pays every open checkout
+//   POST /__test/forget    forgets every checkout (their status is then 404, as after a long time)
 // loom21's internal host lookup for hosted mode (on the same port here; loom21 serves it on its internal port only):
 //   GET  /internal/storefront-hosts/{hostname}   needs Loom21-Host-Secret
 import { createServer } from 'node:http';
@@ -347,6 +350,10 @@ const server = createServer(async (req, res) => {
       for (const c of state.checkouts.values()) if (c.status === 'awaiting_payment') c.status = 'paid';
       return send(res, 204);
     }
+    if (path === '/__test/forget') {
+      state.checkouts.clear();
+      return send(res, 204);
+    }
     return send(res, 404, { error: 'unknown test control' });
   }
 
@@ -485,6 +492,10 @@ const server = createServer(async (req, res) => {
       const method = (await body(req))?.method;
       if (!store().paymentMethods.includes(method)) return problem(res, 409, 'payment_method_unavailable');
       if (++c.payments > 5) return problem(res, 409, 'too_many_payment_attempts');
+      if (state.config.failPayments > 0) {
+        state.config.failPayments--;
+        return problem(res, 502, 'payment_provider_error');
+      }
       const amountSats = sats(c.total);
       const hostedPaymentUrl = `http://localhost:${PORT}/__pay/${c.token}`;
       c.payment = {
@@ -495,7 +506,7 @@ const server = createServer(async (req, res) => {
         bolt11: method === 'lightning' ? 'lnbc' + amountSats + 'n1pmockinvoice' + c.payments : null,
         onchainAddress: method === 'onchain' ? 'bc1qmockaddress0000000000000000000000000' : null,
         bip21: method === 'onchain' ? `bitcoin:bc1qmockaddress0000000000000000000000000?amount=${(amountSats / 1e8).toFixed(8)}` : null,
-        expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + (state.config.paymentSeconds ?? 600) * 1000).toISOString(),
         hostedPaymentUrl,
       };
       return send(res, 201, c.payment);

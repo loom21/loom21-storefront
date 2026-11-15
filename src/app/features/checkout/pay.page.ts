@@ -1,9 +1,9 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, effect, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import type { CheckoutStatus, PaymentMethodName } from '../../core/api/types';
 import { CartStore } from '../../core/cart/cart.store';
 import { CheckoutStore } from '../../core/checkout/checkout.store';
-import { formatCountdown, formatSats } from '../../core/format';
+import { formatCountdown, formatSats, webUrl } from '../../core/format';
 import { I18n, TPipe } from '../../core/i18n/i18n.service';
 import { SeoService } from '../../core/seo/seo.service';
 import { StoreConfig } from '../../core/store/store-config';
@@ -32,7 +32,8 @@ export class PayPage implements OnInit {
   readonly payment = computed(() => this.checkout()?.payment ?? null);
   readonly ended = signal<CheckoutStatus | null>(null);
   readonly busy = signal(false);
-  readonly error = signal<string | null>(null);
+  /** Starts with why the checkout page couldn't open the payment, when it couldn't (navigation state). */
+  readonly error = signal<string | null>((history.state as { payError?: string | null } | null)?.payError ?? null);
   readonly copied = signal(false);
   readonly confirmCancel = signal(false);
   /** The checkout page says so (navigation state) when the card payment's tab was blocked. */
@@ -51,6 +52,14 @@ export class PayPage implements OnInit {
   constructor() {
     inject(SeoService).set({ title: `${this.i18n.t('pay.title')} | ${this.config.store()?.name ?? ''}`, noindex: true });
     const tick = setInterval(() => this.now.set(Date.now()), 1000);
+    // A payment (a Lightning invoice) can run out before its checkout does: it is dropped then, and the buyer chooses
+    // how to pay again, instead of looking at a dead invoice at 0:00.
+    effect(() => {
+      const now = this.now();
+      const c = this.checkout();
+      const ends = c?.payment?.expiresAt;
+      if (c && ends && Date.parse(ends) <= now && Date.parse(c.expiresAt) - now > 5000) this.store.clearPayment();
+    });
     inject(DestroyRef).onDestroy(() => {
       clearInterval(tick);
       this.store.stopPolling();
@@ -75,11 +84,12 @@ export class PayPage implements OnInit {
   async pay(method: PaymentMethodName): Promise<void> {
     if (this.busy()) return;
     const popup = method === 'card' ? window.open('about:blank', '_blank') : null;
+    if (popup) popup.opener = null;
     this.busy.set(true);
     this.error.set(null);
     try {
-      const payment = await this.store.pay(method);
-      if (popup && payment.hostedPaymentUrl) popup.location.href = payment.hostedPaymentUrl;
+      const url = webUrl((await this.store.pay(method)).hostedPaymentUrl);
+      if (popup && url) popup.location.href = url;
       else popup?.close();
       this.popupBlocked.set(method === 'card' && !popup);
     } catch (e) {
