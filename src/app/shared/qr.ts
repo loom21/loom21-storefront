@@ -1,4 +1,4 @@
-// Copied from https://github.com/bitcoinfixesalot/loom21-buy-button (src/qr.ts, MIT), where it is tested by decoding
+// Copied from https://github.com/loom21/loom21-buy-button (src/qr.ts, MIT), where it is tested by decoding
 // every version with an independent reader. Keep the two in step.
 // A compact QR code encoder (ISO/IEC 18004): byte or alphanumeric mode, error correction level M, versions 1–40,
 // the mask with the lowest penalty. Written for this button's size budget, after Project Nayuki's public algorithm

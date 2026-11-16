@@ -2,7 +2,7 @@
 # deploy/single/Caddyfile, then: docker compose up -d
 services:
   storefront:
-    image: ghcr.io/bitcoinfixesalot/loom21-storefront:latest
+    image: ghcr.io/loom21/loom21-storefront:latest
     # or build it yourself: build: .
     env_file: .env
     environment:

@@ -19,7 +19,7 @@ No cookies, no analytics, no third-party scripts or fonts. The browser keeps onl
 3. Copy `docker-compose.example.yml` to `docker-compose.yml`, and put your domain in `deploy/single/Caddyfile`.
 4. Point your domain's DNS at the server and run `docker compose up -d`. Caddy gets the HTTPS certificate by itself.
 
-Or without Compose: `docker run --env-file .env -p 4000:4000 ghcr.io/bitcoinfixesalot/loom21-storefront`, behind your own proxy.
+Or without Compose: `docker run --env-file .env -p 4000:4000 ghcr.io/loom21/loom21-storefront`, behind your own proxy.
 
 ## Settings (environment variables)
 
@@ -52,7 +52,7 @@ Prices are the server's: the cart holds only ids and quantities, and every total
 
 The footer carries a small "Powered by Loom21" link on every store, whatever the merchant's plan (the API's `showPoweredBy`).
 
-Paying works like the [Buy button](https://github.com/bitcoinfixesalot/loom21-buy-button): a Lightning invoice as a QR code with "Open in wallet", an on-chain address as a QR code, or the card payment page in a new tab. The page checks every 2 seconds until the order is paid, and survives a reload.
+Paying works like the [Buy button](https://github.com/loom21/loom21-buy-button): a Lightning invoice as a QR code with "Open in wallet", an on-chain address as a QR code, or the card payment page in a new tab. The page checks every 2 seconds until the order is paid, and survives a reload.
 
 When things go wrong:
 
