@@ -50,6 +50,8 @@ Or without Compose: `docker run --env-file .env -p 4000:4000 ghcr.io/bitcoinfixe
 
 Prices are the server's: the cart holds only ids and quantities, and every total comes from the API's quote, so a stale cart can't show a wrong price. Product pages show prices with VAT, in fiat, sats or both as the merchant's Bitcoin settings say; the cart and checkout list them before VAT, with the VAT on its own line. Availability on a product page is as of when the page was rendered (up to `HTML_CACHE_SECONDS` old); the quote and the checkout always check again.
 
+The footer carries a small "Powered by Loom21" link on every store, whatever the merchant's plan (the API's `showPoweredBy`).
+
 Paying works like the [Buy button](https://github.com/bitcoinfixesalot/loom21-buy-button): a Lightning invoice as a QR code with "Open in wallet", an on-chain address as a QR code, or the card payment page in a new tab. The page checks every 2 seconds until the order is paid, and survives a reload.
 
 When things go wrong:
