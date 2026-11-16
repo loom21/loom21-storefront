@@ -52,6 +52,14 @@ Prices are the server's: the cart holds only ids and quantities, and every total
 
 Paying works like the [Buy button](https://github.com/bitcoinfixesalot/loom21-buy-button): a Lightning invoice as a QR code with "Open in wallet", an on-chain address as a QR code, or the card payment page in a new tab. The page checks every 2 seconds until the order is paid, and survives a reload.
 
+When things go wrong:
+
+- **A Lightning invoice runs out before the order does:** the shopper chooses how to pay again and gets a new invoice for the same order.
+- **The payment can't be opened** (the merchant's payment provider refused it): the order is already made, so the pay page says why and offers the methods again; trying again never makes a second order.
+- **The shopper goes back and checks out again:** the first order is cancelled, so its stock isn't held twice.
+- **Too many status checks (429):** the next check waits for the answer's `Retry-After`. A checkout the API no longer knows (404) ends the wait.
+- **Addresses from the API** (the card pay page, the receipt) are opened only when they are `http(s)`.
+
 A storefront that is turned off (or whose key was revoked) gets a neutral "isn't taking orders" page with status 503.
 
 ## Hosted mode
